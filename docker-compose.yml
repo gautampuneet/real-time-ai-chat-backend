@@ -1,0 +1,90 @@
+services:
+  api:
+    build:
+      context: .
+      target: production
+    container_name: chat_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@postgres:5432/chatdb"
+      REDIS_URL: "redis://redis:6379/0"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-local-development-secret-change-me}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chat_net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chat_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: chat_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - chat_net
+
+  # ── development only ──────────────────────────────────────────────────────
+  api_dev:
+    build:
+      context: .
+      target: dev
+    container_name: chat_api_dev
+    profiles: ["dev"]
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@postgres:5432/chatdb"
+      REDIS_URL: "redis://redis:6379/0"
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY:-local-development-secret-change-me}"
+      APP_ENV: "development"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chat_net
+    volumes:
+      - .:/app
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  chat_net:
+    driver: bridge
