@@ -1,11 +1,11 @@
 # Real-Time AI Chat Backend
 
-A small FastAPI backend for authenticated chat conversations with PostgreSQL,
-Redis Pub/Sub, and WebSockets.
+A backend for a simple real-time chat application built with FastAPI, PostgreSQL,
+Redis, and WebSockets.
 
-The AI reply is mocked. The focus of this project is authentication, persistence,
-conversation history, WebSocket messaging, and Redis fan-out between app
-instances.
+The project implements authentication, conversation management, persistent chat
+history, and Redis-backed message fan-out across multiple application instances.
+AI responses are mocked since the focus of the assignment is the backend.
 
 ## Tech Stack
 
@@ -32,9 +32,6 @@ Start PostgreSQL, Redis, and the API:
 ```bash
 docker compose up --build
 ```
-
-The API container runs Alembic migrations before Uvicorn starts. If migrations
-fail, the container exits with the Alembic error.
 
 Before production use, set `JWT_SECRET_KEY` to a strong random value and keep
 `DEBUG=false`.
@@ -65,6 +62,136 @@ Uvicorn:
 .venv/bin/python -m ruff check app tests migrations
 .venv/bin/python -m mypy app
 ```
+
+## Manual Demo
+
+### 1. Start the project:
+
+```bash
+docker compose up --build
+```
+
+This starts FastAPI, PostgreSQL, and Redis. The API container runs Alembic
+migrations before Uvicorn starts.
+
+In another terminal, verify readiness:
+
+```bash
+curl --noproxy '*' http://localhost:8000/health/ready
+```
+
+### 2. Register a user
+
+```bash
+curl --noproxy '*' -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"strong-password"}'
+```
+
+The response contains `access_token` and `refresh_token`.
+
+### 3. Login
+
+```bash
+curl --noproxy '*' -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@example.com","password":"strong-password"}'
+```
+
+Use the returned `access_token` for REST requests and WebSocket connections:
+
+```bash
+export ACCESS_TOKEN="<ACCESS_TOKEN>"
+```
+
+### 4. Create a conversation
+
+```bash
+curl --noproxy '*' -X POST http://localhost:8000/conversations \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Demo conversation"}'
+```
+
+Save the returned conversation id:
+
+```bash
+export CONVERSATION_ID="<CONVERSATION_ID>"
+```
+
+### 5. Open two WebSocket clients
+
+To check Redis fan-out across app instances, stop the single Docker API
+container and keep PostgreSQL and Redis running:
+
+```bash
+docker compose stop api
+docker compose up -d postgres redis
+```
+
+Run two API processes in separate terminals:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+```
+
+```bash
+DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/chatdb" \
+REDIS_URL="redis://localhost:6379/0" \
+JWT_SECRET_KEY="local-development-secret-change-me" \
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+```bash
+DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/chatdb" \
+REDIS_URL="redis://localhost:6379/0" \
+JWT_SECRET_KEY="local-development-secret-change-me" \
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
+
+Open one WebSocket client against each API process:
+
+```bash
+websocat "ws://localhost:8000/ws/conversations/$CONVERSATION_ID?token=$ACCESS_TOKEN"
+```
+
+```bash
+websocat "ws://localhost:8001/ws/conversations/$CONVERSATION_ID?token=$ACCESS_TOKEN"
+```
+
+### 6. Send a message
+
+In either WebSocket client, send:
+
+```json
+{
+  "type": "message.send",
+  "payload": {
+    "content": "Hello from the demo"
+  }
+}
+```
+
+### 7. Expected behavior
+
+All connected clients should receive:
+
+- `message.created` event for the persisted user message
+- `assistant.message` event for the persisted mock assistant reply
+
+The events are published through Redis, so clients connected to different API
+instances receive the same conversation events.
+
+### 8. Verify message history
+
+```bash
+curl --noproxy '*' \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  "http://localhost:8000/conversations/$CONVERSATION_ID/messages?page=1&page_size=20"
+```
+
+The response includes the stored user message and mock assistant reply.
 
 ## HTTP API
 
@@ -187,4 +314,4 @@ repositories contain database queries.
 
 - Conversations are private and owned by one user.
 - Multiple WebSocket clients can connect to the same conversation for that user.
-- AI responses are mocked because model integration is outside the assignment scope.
+- AI responses are mocked because integrating an actual model isn't the focus of this assignment.

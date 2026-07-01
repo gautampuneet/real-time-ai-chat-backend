@@ -2,8 +2,7 @@
 
 ## Architecture
 
-I kept the project intentionally small. The assignment focuses on authentication, persistence, WebSockets, and Redis fan-out, so I tried to keep those pieces straightforward instead of introducing additional abstractions.
-
+The assignment focuses on authentication, persistence, WebSockets, and Redis fan-out, so I tried to keep the implementation focused on those areas rather than introducing additional abstractions or optional features.
 The project follows a simple layered structure:
 
 ```
@@ -38,10 +37,8 @@ For a production system I would likely use short-lived connection tokens or anot
 
 Redis is used only for Pub/Sub.
 
-After a message is persisted, it is published to Redis. Every application instance subscribes to the relevant conversation channel and broadcasts the event to its locally connected WebSocket clients.
-
-Using Redis as the common broadcast path means the same flow works whether there is one API instance or several.
-
+1. After a message is persisted, it is published to Redis. Every application instance subscribes to the relevant conversation channel and broadcasts the event to its locally connected WebSocket clients.
+2. Redis is the only broadcast path used by the application. Whether there's one API instance or multiple, messages follow the same flow, which keeps the WebSocket handling consistent.
 ---
 
 ## AI
@@ -88,6 +85,17 @@ The next things I would work on would be:
 - Delivery acknowledgements for improved reliability
 
 ---
+
+## Nice-to-have items
+
+I focused on the core functionality requested in the assignment. As a result, a few optional items were left out:
+
+- Message delivery guarantees such as client-generated message IDs and reconnect/redelivery.
+- Prometheus metrics and runtime counters.
+- OAuth providers (Google/GitHub).
+- Automated load testing with Locust or k6.
+
+The Redis Pub/Sub implementation does support running multiple API instances, and the README includes a manual walkthrough for verifying cross-instance message fan-out.
 
 ## Self-critique
 
