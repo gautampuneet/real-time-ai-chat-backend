@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,16 +29,23 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 # ── Auth dependencies ─────────────────────────────────────────────────────────
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    token: Annotated[str | None, Depends(oauth2_scheme)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
     db: DatabaseDep,
     settings: SettingsDep,
 ) -> User:
     """Return the active authenticated user for a valid Bearer access token."""
-    if token is None:
+    if credentials is None:
+        raise AuthenticationError("Authentication token is missing")
+
+    if credentials.scheme.lower() != "bearer":
+        raise AuthenticationError("Authentication scheme must be Bearer")
+
+    token = credentials.credentials
+    if not token:
         raise AuthenticationError("Authentication token is missing")
 
     user_id = get_user_id_from_token(token, "access", settings)
